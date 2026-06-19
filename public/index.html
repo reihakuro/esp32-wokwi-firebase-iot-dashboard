@@ -312,6 +312,34 @@
                 </div>
             </div>
 
+            <!-- LATENCY ANALYTICS: Phân tích độ trễ -->
+            <div class="dashboard-card glass-card card-latency">
+                <div class="card-header">
+                    <h3><i class="fa-solid fa-stopwatch"></i> Latency Analytics</h3>
+                    <span class="sensor-badge" style="background: rgba(168, 85, 247, 0.2); color: #a855f7; border: 1px solid rgba(168, 85, 247, 0.4);">Phân tích thời gian</span>
+                </div>
+                <div class="card-body">
+                    <div class="latency-grid" style="display: flex; flex-direction: column; gap: 15px;">
+                        <div class="latency-item" style="display: flex; justify-content: space-between; align-items: center;">
+                            <span class="latency-lbl"><i class="fa-solid fa-microchip" style="width: 20px; color: #6366f1;"></i> Wokwi Process Time</span>
+                            <span class="latency-val" id="lat-process" style="font-family: var(--font-mono); font-size: 16px;">0 ms</span>
+                        </div>
+                        <div class="latency-item" style="display: flex; justify-content: space-between; align-items: center;">
+                            <span class="latency-lbl"><i class="fa-solid fa-cloud-arrow-up" style="width: 20px; color: #10b981;"></i> Device to Firebase</span>
+                            <span class="latency-val" id="lat-dev-fb" style="font-family: var(--font-mono); font-size: 16px;">0 ms</span>
+                        </div>
+                        <div class="latency-item" style="display: flex; justify-content: space-between; align-items: center;">
+                            <span class="latency-lbl"><i class="fa-solid fa-cloud-arrow-down" style="width: 20px; color: #06b6d4;"></i> Firebase to Web</span>
+                            <span class="latency-val" id="lat-fb-web" style="font-family: var(--font-mono); font-size: 16px;">0 ms</span>
+                        </div>
+                        <div class="latency-item" style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; margin-top: 5px;">
+                            <span class="latency-lbl" style="font-weight: bold; color: #a855f7;"><i class="fa-solid fa-route" style="width: 20px;"></i> Total Latency</span>
+                            <span class="latency-val" id="lat-total" style="font-weight: bold; color: #a855f7; font-family: var(--font-mono); font-size: 18px;">0 ms</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </main>
 
         <!-- Footer -->

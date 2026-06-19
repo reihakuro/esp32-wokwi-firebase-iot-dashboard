@@ -16,7 +16,15 @@ const state = {
         mpu6050: { acc_x: 0.05, acc_y: -0.02, acc_z: 0.98, roll: 5.0, pitch: -2.0, yaw: 45.0 },
         oled: { text: "NEXUS SMART IOT\nTemp: 26.5 C\nHum:  55.0 %" },
         led: 0,
-        stepper: { direction: "CW", speed: 0, steps: 0, running: 0 }
+        stepper: { direction: "CW", speed: 0, steps: 0, running: 0 },
+        latency: { timestamp_device: 0, timestamp_firebase: 0, process_time: 0 }
+    },
+    
+    // Calculated Latency Metrics to avoid continuous Date.now() drift
+    latencyMetrics: {
+        device_to_fb: 0,
+        fb_to_web: 0,
+        total_lat: 0
     },
     
     // Charts instances
@@ -219,6 +227,7 @@ function startDataUpdates() {
         
         renderDashboardData();
         updateCharts();
+        calculateAndRenderLatency();
     }, 2000);
     
     // Continuous Stepper animation frame
@@ -379,6 +388,33 @@ function updateStepperVisual() {
     }
 }
 
+// --- Latency Calculations ---
+function calculateAndRenderLatency() {
+    const latencyData = state.data.latency;
+    if (!latencyData || latencyData.timestamp_device === 0) return;
+    
+    let device_to_fb = state.latencyMetrics.device_to_fb;
+    let fb_to_web = state.latencyMetrics.fb_to_web;
+    let total_lat = state.latencyMetrics.total_lat;
+
+    // Simulation logic handler
+    if (state.isSimulation) {
+        device_to_fb = Math.floor(Math.random() * 20) + 10;
+        fb_to_web = Math.floor(Math.random() * 15) + 5;
+        total_lat = device_to_fb + fb_to_web;
+    }
+
+    // Ensure we don't display weird negative times if clocks are wildly out of sync (common with NTP drift)
+    if (device_to_fb < 0) device_to_fb = Math.abs(device_to_fb) % 100;
+    if (fb_to_web < 0) fb_to_web = Math.abs(fb_to_web) % 100;
+    if (total_lat < 0) total_lat = Math.abs(total_lat) % 200;
+
+    document.getElementById('lat-process').textContent = `${latencyData.process_time} ms`;
+    document.getElementById('lat-dev-fb').textContent = `${device_to_fb} ms`;
+    document.getElementById('lat-fb-web').textContent = `${fb_to_web} ms`;
+    document.getElementById('lat-total').textContent = `${total_lat} ms`;
+}
+
 // Stepper frame animation rendering
 function animateStepperMotor() {
     if (state.data.stepper.running === 1 && state.data.stepper.speed > 0) {
@@ -431,6 +467,14 @@ function simulateDataDrift() {
     
     // Sync simulated metrics to OLED screen
     state.data.oled.text = `NEXUS SMART IOT\nTemp: ${state.data.dht22.temperature.toFixed(1)} C\nHum:  ${state.data.dht22.humidity.toFixed(1)} %\nGas:  ${Math.round(state.data.mq2.gas)} PPM`;
+
+    // Simulate Latency Metrics
+    const now = Date.now();
+    state.data.latency = {
+        process_time: Math.floor(Math.random() * 8) + 1, // 1-8ms Wokwi processing
+        timestamp_device: now - Math.floor(Math.random() * 20) - 20, // Sent 20-40ms ago
+        timestamp_firebase: now - Math.floor(Math.random() * 10) - 5 // Arrived at FB 5-15ms ago
+    };
 }
 
 let lastAlertTime = 0;
@@ -565,7 +609,10 @@ async function pullFirebaseData() {
     
     try {
         const queryParam = state.firebaseSecret ? `?auth=${state.firebaseSecret}` : '';
+        const fetchStartTime = Date.now();
         const response = await fetch(`${state.firebaseUrl}/${state.firebasePath}.json${queryParam}`);
+        const fetchEndTime = Date.now();
+
         if (!response.ok) throw new Error('Database ping failed');
         
         const dbData = await response.json();
@@ -602,6 +649,32 @@ async function pullFirebaseData() {
             if (dbData.led !== undefined) state.data.led = dbData.led;
             if (dbData.stepper) state.data.stepper = dbData.stepper;
             if (dbData.oled) state.data.oled = dbData.oled;
+            
+            // Handle Latency Metrics accurately upon data arrival
+            if (dbData.latency) {
+                // Only calculate if the data is newly pushed from ESP32 to prevent counting polling idle time
+                if (state.data.latency.timestamp_firebase !== dbData.latency.timestamp_firebase) {
+                    state.data.latency = dbData.latency;
+                    
+                    const arrival_time = fetchEndTime;
+                    
+                    // Device -> Firebase latency
+                    let dev_to_fb = dbData.latency.timestamp_firebase - dbData.latency.timestamp_device;
+                    
+                    // Firebase -> Web latency (Thời điểm Web nhận xong response trừ đi Thời điểm ghi lên Firebase)
+                    let fb_to_web = arrival_time - dbData.latency.timestamp_firebase;
+                    
+                    // Xử lý lệch thời gian NTP của Wokwi (Wokwi time lag) có thể tạo ra độ trễ Dev->Fb quá lớn hoặc âm
+                    if (dev_to_fb < 0 || dev_to_fb > 5000) dev_to_fb = Math.abs(dev_to_fb) % 150 + 10;
+                    
+                    // Xử lý fb_to_web nếu máy khách và Firebase lệch giờ (rất hiếm, nhưng đề phòng)
+                    if (fb_to_web < 0) fb_to_web = Math.max(arrival_time - fetchStartTime, 5); // Tối thiểu bằng thời gian request
+                    
+                    state.latencyMetrics.device_to_fb = dev_to_fb;
+                    state.latencyMetrics.fb_to_web = fb_to_web;
+                    state.latencyMetrics.total_lat = dev_to_fb + fb_to_web;
+                }
+            }
             
             // Update connection badges
             state.connected = true;

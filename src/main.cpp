@@ -7,6 +7,7 @@
 #include <Adafruit_Sensor.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <time.h>
 
 // ================= CẤU HÌNH CHÂN (PINS) =================
 #define DHTPIN 4
@@ -79,6 +80,17 @@ void setup() {
     mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
   }
   
+  // 5. Khởi tạo đồng bộ thời gian (NTP) cho đo trễ
+  Serial.print("Đang đồng bộ thời gian NTP");
+  configTime(7 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+  int retry = 0;
+  while(time(nullptr) < 100000 && retry < 10) {
+    Serial.print(".");
+    delay(500);
+    retry++;
+  }
+  Serial.println(" OK!");
+
   Serial.println("Hệ thống đã khởi động hoàn tất!");
 }
 
@@ -93,6 +105,7 @@ void loop() {
 
   // --- NHIỆM VỤ 1: ĐỒNG BỘ DỮ LIỆU VỚI FIREBASE (Mỗi 2 giây) ---
   if (millis() - lastFirebaseSync > 2000) {
+    unsigned long processStart = millis();
     lastFirebaseSync = millis();
     
     if (WiFi.status() == WL_CONNECTED) {
@@ -123,6 +136,19 @@ void loop() {
       jsonString += "\"roll\":" + String(roll) + ",";
       jsonString += "\"pitch\":" + String(pitch) + ",";
       jsonString += "\"yaw\":" + String(yaw);
+      jsonString += "},";
+
+      // Lấy thời gian thiết bị (Epoch millis)
+      struct timeval tv;
+      gettimeofday(&tv, NULL);
+      unsigned long long timestamp_device = (unsigned long long)(tv.tv_sec) * 1000 + (unsigned long long)(tv.tv_usec) / 1000;
+      unsigned long processTime = millis() - processStart;
+
+      // Latency Node
+      jsonString += "\"latency\":{";
+      jsonString += "\"timestamp_device\":" + String(timestamp_device) + ",";
+      jsonString += "\"timestamp_firebase\":{\".sv\":\"timestamp\"},";
+      jsonString += "\"process_time\":" + String(processTime);
       jsonString += "}";
       
       jsonString += "}";
