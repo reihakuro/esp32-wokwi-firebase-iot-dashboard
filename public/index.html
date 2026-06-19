@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart IoT Dashboard - Wokwi & Firebase</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js for smooth charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Ambient Background Orbs -->
+    <div class="ambient-orb orb-1"></div>
+    <div class="ambient-orb orb-2"></div>
+    <div class="ambient-orb orb-3"></div>
+
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-logo">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-microchip"></i>
+                </div>
+                <div class="logo-text">
+                    <h1>NEXUS <span class="accent-text">IoT</span></h1>
+                    <p>Real-time Smart Home & Controller</p>
+                </div>
+            </div>
+            
+            <div class="header-status">
+                <div class="status-indicator simulated" id="sim-badge">
+                    <span class="pulse-dot"></span>
+                    <span class="status-label">Simulation Active</span>
+                </div>
+                <div class="status-indicator disconnected" id="firebase-badge">
+                    <span class="status-dot"></span>
+                    <span class="status-label">Firebase: Off</span>
+                </div>
+                <div class="time-display" id="current-time">
+                    00:00:00 PM
+                </div>
+            </div>
+        </header>
+
+        <!-- Configuration Panel (Firebase & Settings) -->
+        <section class="config-panel glass-card">
+            <div class="panel-header" id="config-toggle">
+                <h3><i class="fa-solid fa-sliders"></i> Cấu hình kết nối Firebase & Wokwi</h3>
+                <span class="toggle-icon"><i class="fa-solid fa-chevron-down"></i></span>
+            </div>
+            <div class="panel-content collapsed" id="config-content">
+                <div class="config-grid">
+                    <div class="input-group">
+                        <label for="fb-url"><i class="fa-solid fa-database"></i> Firebase Database URL</label>
+                        <input type="text" id="fb-url" placeholder="https://your-db-default-rtdb.firebaseio.com/" value="">
+                        <small>Endpoint dạng JSON: /iot_data.json</small>
+                    </div>
+                    <div class="input-group">
+                        <label for="fb-secret"><i class="fa-solid fa-key"></i> Database Secret (Nếu cần)</label>
+                        <input type="password" id="fb-secret" placeholder="Optional Auth Token">
+                    </div>
+                    <div class="input-actions">
+                        <button class="btn btn-primary" id="btn-connect"><i class="fa-solid fa-plug"></i> Kết nối</button>
+                        <button class="btn btn-secondary" id="btn-toggle-sim"><i class="fa-solid fa-wand-magic-sparkles"></i> Dừng Mô phỏng</button>
+                    </div>
+                </div>
+                <div class="help-box">
+                    <h5><i class="fa-solid fa-info-circle"></i> Hướng dẫn kết nối Wokwi:</h5>
+                    <p>Trong ESP32 (Wokwi), đẩy dữ liệu dạng JSON lên Firebase RTDB tại địa chỉ của bạn. Dashboard sẽ tự động cập nhật mỗi <strong>1-2 giây</strong> thông qua cơ chế polling/SSE.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Main Dashboard Grid -->
+        <main class="dashboard-grid">
+            
+            <!-- DHT22: Nhiệt độ & Độ ẩm -->
+            <div class="dashboard-card glass-card card-dht">
+                <div class="card-header">
+                    <h3><i class="fa-solid fa-temperature-half"></i> DHT22 Sensor</h3>
+                    <span class="sensor-badge">Môi trường</span>
+                </div>
+                <div class="card-body">
+                    <div class="dht-values">
+                        <div class="gauge-container">
+                            <div class="circular-progress temp-progress" id="temp-gauge" style="--val: 28;">
+                                <div class="inner-value">
+                                    <span class="value" id="temp-val">28.4</span><span class="unit">°C</span>
+                                </div>
+                            </div>
+                            <span class="gauge-label"><i class="fa-solid fa-fire-flame-simple"></i> Nhiệt độ</span>
+                        </div>
+                        <div class="gauge-container">
+                            <div class="circular-progress humid-progress" id="humid-gauge" style="--val: 65;">
+                                <div class="inner-value">
+                                    <span class="value" id="humid-val">65.2</span><span class="unit">%</span>
+                                </div>
+                            </div>
+                            <span class="gauge-label"><i class="fa-solid fa-droplet"></i> Độ ẩm</span>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="dht-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MQ2: Cảnh báo Khói & Gas -->
+            <div class="dashboard-card glass-card card-mq2">
+                <div class="card-header">
+                    <h3><i class="fa-solid fa-wind"></i> MQ2 Sensor</h3>
+                    <span class="sensor-badge danger-badge" id="mq2-status">Safety</span>
+                </div>
+                <div class="card-body">
+                    <div class="mq2-content">
+                        <div class="mq2-gauge">
+                            <div class="radial-bar" id="mq2-bar">
+                                <svg>
+                                    <circle cx="70" cy="70" r="60"></circle>
+                                    <circle cx="70" cy="70" r="60" id="mq2-progress"></circle>
+                                </svg>
+                                <div class="radial-number">
+                                    <span id="mq2-val">120</span>
+                                    <span class="unit">PPM</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mq2-info">
+                            <div class="status-text">Mức độ khí gas / khói</div>
+                            <div class="status-desc" id="mq2-desc">Không khí an toàn</div>
+                            <div class="alarm-banner" id="alarm-banner">
+                                <i class="fa-solid fa-triangle-exclamation"></i> PHÁT HIỆN RÒ RỈ GAS!
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="mq2-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MPU6050: Gia tốc & Góc quay -->
+            <div class="dashboard-card glass-card card-mpu">
+                <div class="card-header">
+                    <h3><i class="fa-solid fa-compass-drafting"></i> MPU6050 6-Axis</h3>
+                    <span class="sensor-badge">Cảm biến chuyển động</span>
+                </div>
+                <div class="card-body">
+                    <div class="mpu-grid">
+                        <div class="mpu-visual">
+                            <div class="gyro-cube-container">
+                                <div class="gyro-cube" id="gyro-cube">
+                                    <div class="face front">FRONT</div>
+                                    <div class="face back">BACK</div>
+                                    <div class="face right">RIGHT</div>
+                                    <div class="face left">LEFT</div>
+                                    <div class="face top">TOP</div>
+                                    <div class="face bottom">BOTTOM</div>
+                                </div>
+                            </div>
+                            <div class="visual-hint">Mô hình 3D góc xoay thời gian thực</div>
+                        </div>
+                        <div class="mpu-stats">
+                            <div class="stat-section">
+                                <h4><i class="fa-solid fa-gauge"></i> Accelerometer (Gia tốc)</h4>
+                                <div class="axis-bars">
+                                    <div class="axis-group">
+                                        <span class="axis-lbl">X</span>
+                                        <div class="axis-track"><div class="axis-fill" id="acc-x-bar" style="width: 50%;"></div></div>
+                                        <span class="axis-val" id="acc-x">0.12 g</span>
+                                    </div>
+                                    <div class="axis-group">
+                                        <span class="axis-lbl">Y</span>
+                                        <div class="axis-track"><div class="axis-fill" id="acc-y-bar" style="width: 48%;"></div></div>
+                                        <span class="axis-val" id="acc-y">-0.05 g</span>
+                                    </div>
+                                    <div class="axis-group">
+                                        <span class="axis-lbl">Z</span>
+                                        <div class="axis-track"><div class="axis-fill" id="acc-z-bar" style="width: 59%;"></div></div>
+                                        <span class="axis-val" id="acc-z">0.98 g</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="stat-section">
+                                <h4><i class="fa-solid fa-arrows-spin"></i> Gyroscope (Góc quay)</h4>
+                                <div class="axis-bars">
+                                    <div class="axis-group">
+                                        <span class="axis-lbl">Roll</span>
+                                        <span class="axis-num-val" id="gyro-r">12.4°</span>
+                                    </div>
+                                    <div class="axis-group">
+                                        <span class="axis-lbl">Pitch</span>
+                                        <span class="axis-num-val" id="gyro-p">-4.8°</span>
+                                    </div>
+                                    <div class="axis-group">
+                                        <span class="axis-lbl">Yaw</span>
+                                        <span class="axis-num-val" id="gyro-y">156.2°</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- OLED SSD1306: Màn hình mô phỏng -->
+            <div class="dashboard-card glass-card card-oled">
+                <div class="card-header">
+                    <h3><i class="fa-solid fa-tv"></i> OLED SSD1306 Display</h3>
+                    <span class="sensor-badge">Màn hình hiển thị</span>
+                </div>
+                <div class="card-body">
+                    <div class="oled-wrapper">
+                        <div class="oled-screen">
+                            <div class="oled-header">
+                                <span>SSD1306 OLED (128x64)</span>
+                                <span class="oled-conn-status">ONLINE</span>
+                            </div>
+                            <div class="oled-content" id="oled-screen-text">
+                                <div class="line-1">NEXUS SMART IOT</div>
+                                <div class="line-2">Temp: 28.4 C</div>
+                                <div class="line-3">Hum:  65.2 %</div>
+                                <div class="line-4">System: OK</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="oled-controls">
+                        <div class="input-group">
+                            <label for="oled-input"><i class="fa-solid fa-keyboard"></i> Gửi thông tin hiển thị lên OLED</label>
+                            <div class="input-with-btn">
+                                <input type="text" id="oled-input" placeholder="Nhập văn bản hiển thị...">
+                                <button class="btn btn-glow" id="btn-send-oled"><i class="fa-solid fa-paper-plane"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LED ĐƠN: Điều khiển đèn led -->
+            <div class="dashboard-card glass-card card-led">
+                <div class="card-header">
+                    <h3><i class="fa-regular fa-lightbulb"></i> Single LED Toggle</h3>
+                    <span class="sensor-badge">Thiết bị đầu ra</span>
+                </div>
+                <div class="card-body led-card-body">
+                    <div class="led-visual-container">
+                        <div class="led-light-bulb" id="led-bulb">
+                            <i class="fa-solid fa-lightbulb"></i>
+                            <div class="led-glow"></div>
+                        </div>
+                        <span class="led-status-lbl" id="led-status-text">ĐANG TẮT (OFF)</span>
+                    </div>
+                    <div class="led-action">
+                        <button class="btn btn-switch" id="btn-toggle-led">
+                            <span class="switch-ball"></span>
+                        </button>
+                        <span class="switch-hint">Nhấp để Bật/Tắt LED</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEPPER MOTOR & DRIVER: Động cơ bước -->
+            <div class="dashboard-card glass-card card-stepper">
+                <div class="card-header">
+                    <h3><i class="fa-solid fa-gear"></i> Stepper Motor & Driver</h3>
+                    <span class="sensor-badge">Động cơ điều khiển</span>
+                </div>
+                <div class="card-body">
+                    <div class="stepper-grid">
+                        <div class="stepper-visual">
+                            <div class="motor-chassis">
+                                <div class="motor-shaft-outer">
+                                    <div class="motor-shaft-inner" id="motor-gear">
+                                        <i class="fa-solid fa-gear"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="stepper-status" id="stepper-rpm">Status: STOPPED</div>
+                        </div>
+                        <div class="stepper-controls">
+                            <div class="control-group">
+                                <label><i class="fa-solid fa-arrow-rotate-left"></i> Chiều quay</label>
+                                <div class="radio-toggle">
+                                    <button class="radio-btn active" id="btn-dir-cw">Theo chiều kim (CW)</button>
+                                    <button class="radio-btn" id="btn-dir-ccw">Ngược chiều (CCW)</button>
+                                </div>
+                            </div>
+                            <div class="control-group">
+                                <label><i class="fa-solid fa-gauge-high"></i> Tốc độ động cơ (RPM)</label>
+                                <div class="slider-container">
+                                    <input type="range" id="stepper-speed" min="0" max="100" value="0" class="speed-slider">
+                                    <div class="slider-val"><span id="speed-val">0</span> %</div>
+                                </div>
+                            </div>
+                            <div class="control-group steps-input">
+                                <label><i class="fa-solid fa-angle-right"></i> Số bước (Steps) / Chạy liên tục</label>
+                                <div class="step-actions">
+                                    <button class="btn btn-sm btn-outline" id="btn-step-90">90° (50 Steps)</button>
+                                    <button class="btn btn-sm btn-outline" id="btn-step-180">180° (100 Steps)</button>
+                                    <button class="btn btn-sm btn-glow" id="btn-motor-start">Chạy Liên Tục</button>
+                                    <button class="btn btn-sm btn-danger" id="btn-motor-stop">Dừng khẩn cấp</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Footer -->
+        <footer class="app-footer">
+            <p>&copy; 2026 - Nexus IoT Dashboard. Thiết kế cho môn học Thực tập IoT.</p>
+            <div class="footer-links">
+                <span>Wokwi & Firebase Bridge v1.0</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Notification system -->
+    <div class="notification-container" id="notification-area"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

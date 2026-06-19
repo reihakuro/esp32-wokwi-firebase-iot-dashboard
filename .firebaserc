@@ -1,0 +1,5 @@
+{
+  "projects": {
+    "default": "iot-esp32-dashboard"
+  }
+}
